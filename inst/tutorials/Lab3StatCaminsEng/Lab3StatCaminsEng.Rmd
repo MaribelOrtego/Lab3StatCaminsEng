@@ -1,0 +1,552 @@
+---
+title: "Lab3-Complete Simple Linear Regression "
+subtitle: "
+<div id='logo-nom-subtitle' style='text-align:center;'>
+  <img src='www/logoUPC.png' style='height:50px; display:block; margin:0 auto 5px auto;'>
+  <p style='margin:0; font-weight:bold; color:#0055A4 !important; font-size:16px;'>Maribel Ortego</p>
+</div>"
+author: "Maribel Ortego"
+date: "`r format(Sys.time(), '%Y %B %d')`"
+
+output:
+  learnr::tutorial:
+    progressive: false
+    theme:
+      bslib: true
+      bootswatch: minty
+    css:
+      - "css/styles.css"
+      - "css/hero-image-css-v2.css"
+    includes:
+      in_header: "www/hero-image-PiE.html"
+    number_sections: TRUE
+    toc: true
+    toc_depth: 4
+    toc_float: true
+
+runtime: shiny_prerendered
+bibliography: geyser.bib 
+---
+
+```{r, label="generaloptions", include=FALSE}
+# Configuració general del tutorial
+library(learnr)
+knitr::opts_chunk$set(
+  echo = TRUE,
+  fig.width = 6,
+  out.width = "50%",
+  fig.align = "center",
+  fig.caption = TRUE
+)
+```
+
+# 📌 Introduction
+In this Lab3 we will work witht the dataset  **Geyser**, from which we will carry out a univariate and multivariate descriptive statistics analysis. We will also work on a first approximation to linear regression and the definition of factors. 
+
+::: {.infobox .caution data-latex="{caution}"}
+**Please remember to set your working directory correctly** before reading the dataset.
+:::
+
+## Context: Old Faithful
+
+Old Faithful is a geyser located in Yellowstone National Park (Wyoming, United States), a major tourist attraction.
+The paper @DenPre1987 presents the data: "From August 1 to August 8, 1978, a group of rangers (park police) and naturalists recorded the duration of the eruption and the interval to the next eruption (in minutes) of the eruptions of Old Faithful geyser, between 6 am and midnight.
+The objective of the study was to predict the time of the next eruption, in order to show it on the posters of the Visitor Center, so that visitors could manage their time well."
+
+
+### Studying the relationship between Duration and Interval (continued):
+
+We introduced the dataset in Lab2. We start this Lab repeating some of the steps that we already did in Lab2. For instance, we should be able to do:
+
+(a) A dispersion plot of Interval vs Duration in log scale.
+
+(b) Compute the sample covariance and correlation.
+
+After this first steps, in this Lab3 we are going to:
+
+(c) Estimate the least squares regression line of the Interval with respect to the duration, in the appropriate scale (log). Perform the complete analysis: diagnosis of hypotheses and interpretation of results. (See Section [Complete interpretation of the model: step by step][Complete interpretation of the model: step by step]).
+
+Next, we will study further the relationship between Duration and Interval and complicate the model. We will ask you to:
+
+(d) Define a factor that divides the durations into short and long. Take as a reference value the 3 minutes duration, or the corresponding ones in log duration.
+(e) Plot the logintervals between eruptions according to the two logduration categories defined.
+(f)  Fit the regression line that assigns different intercepts to the two log duration categories. Perform the full analysis: diagnosis of hypotheses and interpretation of results. (See Section [Complete interpretation of the model: step by step][Complete interpretation of the model: step by step]).
+(g)  Fit the regression line that assigns different ordinates to the origin and different slopes to the two logduration categories. Perform the full analysis: diagnosis of hypotheses and interpretation of results. (See Section [Complete interpretation of the model: step by step][Complete interpretation of the model: step by step]).
+
+Let's start with the Lab3 Session:
+
+## The regression model
+
+::: {.infobox .caution data-latex="{caution}"}
+**Required** having read the Simple Linear Regression section of the document
+
+**Introducció_Regressio_Lineal-GEC2020-2024-2025-s.pdf**
+
+:::
+
+##  Libraries and data reading
+
+Once the working directory is set, we will start by calling the libraries we need in the session. In Lab1, the `car` library was installed. If for some reason you do not have it installed, you need to review the contents of Lab1.
+
+```{r llibreries}
+library(car)
+library(nnet)
+```
+
+::: {.infobox .circle data-latex="{circle}"}
+
+***WARNING!***
+
+Open the file **"DadeGeyser.csv"** using Notepad.
+Observe the format of the file: how are the columns separated? tab, comma, semicolon, space?; Are the variable names included? Are there any leading rows with comments?
+:::
+
+We read the data set, taking into account its structure, and we name it.
+
+
+::: {.infobox .caution data-latex="{caution}"}
+***IMPORTANT***: R is case sensitive: *Data* is different from *data*.
+:::
+
+```{r lectura_dades, echo=TRUE}
+dadesgeyser <- read.table("DadesGeyser.csv",
+             header=TRUE, sep=";", na.strings="NA", dec=".", strip.white=TRUE)
+```
+Since the variables Duration and Interval are positive and have a relative scale, we generate two new variables. We will apply the logarithm (natural, Neperian) and store the variables in the dataframe.
+
+```{r}
+dadesgeyser$logdurada <- with(dadesgeyser, log(Durada))
+dadesgeyser$loginterval <- with(dadesgeyser, log(Interval))
+```
+
+# Introducing a factor
+
+Factors help us refine the description of the data. Sometimes they are already included among the variables. In other instances, the first observation of the data allows us to define new ones.
+
+## Defining a factor
+
+Looking at the scatterplot of the two variables, we have seen that there are two point clouds. It seems that short durations are related to short intervals and long durations to long intervals (with a little noise in between). We take advantage of this observation to define a new variable, which will be the "Short Duration" factor.
+
+```{r, fig.cap="Scatterplot Intèrval vs Durada"}
+car::scatterplot(Interval~Durada, smooth=FALSE, regLine=FALSE, boxplots=FALSE, data=dadesgeyser)
+```
+
+Let's do it in two steps: 1) we define the variable duration. We select the observations with a duration less than a given value. This is a logical condition, which we save as a numerical value and, just in case, in the form of a vector. The 1s will be Short intervals and the 0s will be long intervals. 2) We add this vector to our dataframe and 3) We tell R that this numeric vector of 0 and 1 is actually a qualitative variable (factor), and that it can replace the 0 and 1 with the corresponding label:
+
+::: {.infobox .caution data-latex="{caution}"}
+It is important to respect the order of the labels. 0 corresponds to long and 1 to short.
+:::
+
+```{r}
+indicadordurada <- as.vector((as.numeric(dadesgeyser[,"Durada"]>3)))
+
+dadesgeyser <- cbind(dadesgeyser, indicadordurada)
+
+dadesgeyser$indicadordurada <- factor(dadesgeyser$indicadordurada, labels=c('Short duration','Long duration'))
+
+```
+### 🖊Exercise: Summarize the indicator factor duration
+```{r exercici_summary, exercise=TRUE}
+```
+
+#  Study of the relationship between variables
+
+The world is not univariate. Before studying multivariate variables, we can describe the two-to-two relationships between variables. 
+
+## Scatterplots
+
+The scatterplot allows us to visualize the bivariate relationship between variables.
+
+The `scatterplot` function of `car` allows us to perform this representation. We will directly represent the version without extra lines and with full scale:
+
+```{r, fig.cap="Modificació dels eixos del diagrama de dispersió per loginterval i logdurada"}
+car::scatterplot(loginterval~logdurada, smooth=FALSE, regLine=FALSE, boxplots=FALSE, data=dadesgeyser, xlim=c(0,1), ylim=c(0,4.5))
+```
+
+### 🖊Exercise: What were the maximum and minimum values of the variables? Do we need to modify something in the plot? Write the corresponding code.
+```{r exercici_valorsmaxmin, exercise=TRUE}
+
+```
+
+## Measuring the linear relationship
+
+Remember that in the previous Lab we calculated the covariance and correlation of the two variables.
+
+Let's remember that the Pearson linear correlation coefficient measures the _linear_ dependence of the variables. Be careful! in everyday language we use correlation as a synonym for dependence. The Pearson linear correlation coefficient is a normalized version of the covariance, which makes its interpretation easier:
+
+\[
+r_{XY}=\frac{Cov(X,Y)}{\sqrt{Var[X]}\sqrt{Var[Y]}}  \ .
+\]
+
+Remember that the coefficient takes values between [-1,1] and that if two variables have a correlation of 0, we call them *uncorrelated*.
+
+In the scatter diagram we have observed a certain linear dependence between the variables, but not perfect. We calculate the corresponding Pearson correlation coefficient:
+
+```{r}
+cor(dadesgeyser[,c("logdurada","loginterval")], use="complete")
+```
+
+We observe that we obtain a medium-high correlation value, which corresponds to what we had observed in the graph.
+
+There are other correlation coefficients (Kendall, Spearman), which measure more general dependencies. We will not use them for the moment.
+
+# Simple Linear Regression Model (Least Squares)
+
+We wish to draw the linear regression line of Y with respect to X using the least squares method., $$  Y= \beta_0 + \beta_1 X $$.
+
+## The coefficients using least squares
+We can obtain the analytical expression of the coefficients $\beta_0$ (intercept) and $\beta_1$ (slope) of the line estimated with the least squares method:
+
+\[ 
+\beta_1= \frac{Cov(X,Y)}{Var[X]}  
+\]
+\[ 
+\beta_0= \bar{y}- \beta_1 \bar{x}
+\]
+
+Before calculating the coefficients that correspond to the available data, let's calculate the intermediate values. We need:
+
+```{r}
+mean(dadesgeyser$logdurada)
+mean(dadesgeyser$loginterval)
+var(dadesgeyser$logdurada)
+var(dadesgeyser$loginterval)
+cov(dadesgeyser$logdurada, dadesgeyser$loginterval)
+```
+
+### 🖊Exercise: Calculate the slope and intercept of the regression line
+```{r exercici_pendentiordenada, exercise=TRUE}
+ 
+```
+
+### 🖊Exercise: Represents the scatterplot of the two variables and adds the regression line using the `abline` instruction.
+```{r exercici_regressio, exercise=TRUE}
+ 
+```
+
+## Initial linear model and validation
+
+The simple linear regression model completed from a statistical point of view requires a series of hypotheses that allow us to assess whether the fit is adequate and the quality of the linear fit.
+
+The hypotheses of the linear least squares model are established on the residuals of the model, this is, on the difference between the observations of the predicted variable and the values predicted by the model.
+
+It is essential to assess whether the hypotheses of this model are met. In the first laboratories we will carry out this assessment graphically. Later we will complete it with the so-called hypothesis tests.
+
+The step by step will always be the same: 1) Call the model; 2) Verification of the model hypotheses; 3) If the hypotheses are met, interpretation of the `summary` of the model and 4) New iteration if any changes are required
+
+### Complete interpretation of the model: step by step
+
+The statistical model of linear regression (both simple and multiple) is based on the assumptions about the residuals. Validation of these assumptions is **essential**. If the assumptions are not met, the subsequent interpretation of the model is meaningless.
+
+Step by step:
+
+(1) Generate the multiple linear regression model using R.
+
+(2) Check whether the assumptions of the model are met, its validity and the quality of the fit:
+   
+      (a) If there are two or more predictor variables, check if there is collinearity of the predictor variables. Collinearity influences the subsequent hypothesis tests. In the case of collinearity, methods must be applied to avoid it before continuing with the model adjustment process.
+      (b) Check the model hypotheses: Centered, homoscedastic uncorrelated residuals (with the same variance) and with a normal distribution. We can perform the check visually using the model diagnostic graphs. In case of doubt, it will be necessary to complement with the hypothesis tests corresponding to each hypothesis of the model (we will see some of them later). If any of the hypotheses are not met, it will be necessary to take this into account for subsequent interpretations (we will go into more detail later).
+      (c) Check if the linear model makes sense. $F$ test.
+      (d) Check if any of the coefficients in the model can be null using $t$ contrasts. If so, re-generate the regression model without this/these variables.
+      (e) Check the quality of the model. ANOVA table of the model. Coefficient of determination.
+   
+(3) Write the equation of the resulting linear model, with the estimated coefficients. Interpret the model.
+
+
+::: {.infobox .caution data-latex="{caution}"}
+What happens if one of the model hypotheses is not met? The summary results cannot be interpreted with confidence. We will talk about that in another lab.
+
+If the hypothesis that is not met is that of normality, we cannot correctly interpret the intermediate $p$-values, but we can interpret those that are very large or very small. This is, if the $p$-value is 0.9, we clearly cannot reject $H_0$; if the $p$-value is 1*e-26, we will clearly reject $H_0$. We will not be able to decide on values close to 0.05, because the distribution of the statistic is not as assumed.
+:::
+
+
+## The Simple Linear Regression model for OldFaithful
+
+We want to predict the loginterval from the logduration, with a simple linear regression model estimated by least squares:
+
+```{r, LM0}
+LinearModel.0 <- lm(loginterval ~ logdurada, data=dadesgeyser)
+```
+
+Let's represent together the four diagnostic graphs that R provides us:
+
+```{r, fig.cap="Gràfics de diagnòstic del model de regressió simple loginterval ~ logdurada"}
+par(mfrow=c(2,2))
+  plot(LinearModel.0)
+par(mfrow=c(1,1))
+```
+
+We will interpret them better if we visualize them one by one:
+
+### Plot 1: residuals vs. predicted
+
+With the graph of residuals vs predicted values we will visually check three of the hypotheses: 1) centered residuals; 2) homoscedastic residuals (equal variance) and 3) uncorrelated residuals:
+
+```{r, graf1, fig.cap="Gràfics de diagnòstic del model de regressió simple loginterval ~ logdurada"}
+plot(LinearModel.0, which=1)
+```
+
+Looking at the plot, we cannot reject that the residuals are centered, homoscedastic, and uncorrelated.
+
+### Plot 2: Normality
+```{r, graf2, fig.cap="Gràfics de diagnòstic del model de regressió simple loginterval ~ logdurada"}
+plot(LinearModel.0, which=2)
+```
+
+The `qqplot` is a graph that allows us to assess whether the distribution of the data, the residuals of the model in this case, is similar to the reference distribution, in this case the normal distribution. The qqplot represents the rescaled reference distribution function so that it becomes a straight line, and the same transformation is applied to the sampling distribution function of the residuals. If the points of the sampling distribution function follow the straight line, we will say that we cannot reject that the distribution of the variable is the reference one. In our case, that the residuals have a normal distribution.
+
+The graph provided by default can be improved by adding a confidence band. This improved graph is found in the `car` library.
+
+When we generate the linear model, quantities of interest are generated: predicted values, coefficients, residuals, among others. We can work with those variables normally. For example, we can represent its histogram:
+
+```{r, fig.cap="Histograma dels residus del model simple"}
+LinearModel.0$residuals
+hist(LinearModel.0$residuals)
+```
+
+Or the empirical distribution function of the residues, which we rescale to generate the qqplot:
+
+```{r, fig.cap="Funció de distribució empírica dels residus del model simple"}
+plot(ecdf(LinearModel.0$residuals))
+```
+
+### 🖊Exercici:
+```{r  residus-quiz, echo=FALSE}
+quiz(
+question("Residuals",
+    answer("They have a sample mean of approximately 0", correct = TRUE),
+    answer("They present a symmetrical histogram", correct = TRUE),
+    answer("The 80th percentile is approximately 0.1", correct = TRUE),
+    answer("All of the above options are correct.", correct = TRUE)
+    )
+   )    
+```
+
+We will represent the `qqPlot` of the residuals. The confidence band that allows us to assess whether the points far from the reference are really very far and then reject the reference model:
+
+```{r, graf3b, fig.cap="qqPlot dels residus"}
+car::qqPlot(LinearModel.0$residuals)
+```
+
+Looking at the plot, we cannot reject that the distribution of the residuals is normal.
+
+### Plot 3: Residuals vs. predicted, rescaled
+
+This graph complements the residuals vs. predicted values graph. The rescaling of the residuals axis allows for a better visualization of (the absence of) uncorrelation than in plot 1.
+
+```{r, graf3, fig.cap="Gràfics de diagnòstic del model de regressió simple loginterval ~ logdurada"}
+plot(LinearModel.0, which=3)
+```
+
+### Plot 4: Leverage
+
+This plot is not strictly part of the model hypothesis testing. It was probably added to the default plot to complete the four. We verify the influential points, the *leverage points*, and measure their influence. In general, it is not advisable to eliminate influential points, but we must be aware that they are for subsequent interpretations. We will consider influential those values that have a Cook distance of 0.5 or higher.
+```{r, graf4,fig.cap="Diagnostic plots of the simple regression model loginterval ~ logdurada"}
+plot(LinearModel.0, which=4)
+```
+
+Looking at the plot, we rule out that there are influential values that affect the model.
+
+### The model summary
+Once the model hypotheses have been verified, we can proceed to interpret the model summary:
+
+```{r, summLM0}
+summary(LinearModel.0)
+```
+
+(1) F-test: we need to verify the value of the $p$-value. In this case, since the $p$-value is very small, we reject the hypothesis of "all the coefficients of the model except $\beta_0$ are zero at the same time". Therefore, *the linear model makes sense*.
+
+(2) $t$ tests: it is necessary to verify the value of the p-value of the test of each of the coefficients. In this case, since the $p$-value is small, it is rejected that $\beta_0$ is null and it is also rejected that $\beta_1$ is null. We keep both coefficients in the model.
+
+(3) Coefficient of determination: $R^2 \in [0,1]$. The closer it is to 1, the better the linear fit of the model. We have obtained a good fit.
+
+Note: In the case of the simple linear regression model, the coefficient of determination is the square of the correlation coefficient between the variables. This is not true for multiple linear regression models.
+
+### 🖊Exercise:
+```{r  summaryM0-quiz, echo=FALSE}
+quiz(
+question("In the summary of Model0",
+    answer("The $p$-value of the F-contrast is 2.2e-16", correct = TRUE),
+    answer("The determination coefficient is 0.7948", correct = TRUE),
+    answer("We reject the coefficient $\beta_0$ as being zero.", correct = TRUE),
+    answer("All of the above options are correct.", correct = TRUE)
+    )
+   )    
+```
+
+### Visualizing the estimated model
+
+We can plot the estimated simple linear regression line on the `scatterplot`. The `abline` command allows us to call the model directly, or we could provide the parameters:
+
+```{r, fig.cap="Recta de regressió ajustada sobre scatterplot loginterval ~ logdurada"}
+scatterplot(loginterval~logdurada, xlim=c(0,1.8), ylim=c(0,5), regLine=FALSE, smooth=FALSE, boxplots=FALSE, data=dadesgeyser)
+abline(LinearModel.0, col=4)
+```
+
+# Regression model adding a factor
+
+In the univariate representations we saw that two groups could be visualized, corresponding to short and long durations/intervals. We have defined a factor to represent this characteristic. Now we will use the factor to improve the linear regression model.
+
+We see that the loginterval has different characteristics depending on the duration:
+
+```{r, fig.cap="Boxplot per a loginterval segons els dos grups definits per indicadordurada"}
+boxplot(loginterval~indicadordurada, ylab='loginterval', xlab='indDurada', data=dadesgeyser)
+```
+
+## Factor regression model. Simple interaction
+
+We establish a new linear regression model. We introduce the factor, so that it could be considered as a multiple (more than one predictor variable). We note that we introduce the indicator with a + . Thus, the indicator only affects $\beta_0$, and therefore we will have a $\beta_0$ for each of the factor levels (in this case, one for short durations and another for long durations). This corresponds to generating two parallel regression lines, with different ordinates at the origin.
+
+```{r, LM1}
+LinearModel.1 <- lm(loginterval ~ logdurada + indicadordurada, data=dadesgeyser)
+```
+
+```{r, fig.cap="Gràfics de diagnòstic del model amb variable indicadora"}
+par(mfrow=c(2,2))
+plot(LinearModel.1)
+par(mfrow=c(1,1))
+```
+
+```{r, summaryLM1}
+summary(LinearModel.1)
+```
+
+::: {.infobox .caution data-latex="{caution}"}
+Watch out! The output of the estimated parameters is inherited from older programs and is a bit messy.
+The estimated model is:
+\[
+loginterval =  \beta_{0_{ref}}+ \Delta \beta_{0_{altra}}+ \beta_{1}* logdurada
+\]
+
+At the output, the intercept value corresponds to $\beta_{0_{ref}}$, the ordinate at the origin of the reference category, which will be the first in alphabetical order or the lowest number if we have coded with numbers.
+
+The value $\beta_{0_{other}}$ is actually the change $\Delta \beta_{0_{other}}$, increase or decrease of $\beta_{0_{ref}}$ due to being at the other level of the factor. That is,
+$\beta_{0_{altra}}=\beta_{0_{ref}}+\Delta \beta_{0_{altra}}$.
+:::
+
+### 🖊Exercise:
+```{r  summaryM1-quiz, echo=FALSE}
+quiz(
+question("In the Model1 summary",
+    answer("The $p$-value of the F-contrast is 2.2e-16", correct = TRUE),
+    answer("The coefficient of determination of Model1 is slightly higher than that of Model0", correct = TRUE),
+    answer("We reject the coefficient $\beta_0$ as being zero.", correct = TRUE),
+    answer("All of the above options are correct.", correct = TRUE)
+    )
+   )    
+```
+
+
+We represent the `scatterplot` with the regression lines fitted by the two models:
+```{r, fig.cap="Scatterplot with regressions for groups defined by duration indicator"}
+scatterplot(loginterval~logdurada | indicadordurada, regLine=FALSE, smooth=FALSE, boxplots=FALSE, by.groups=TRUE, data=dadesgeyser)
+abline(LinearModel.0, col=1)
+abline(a=LinearModel.1$coeff[1], b=LinearModel.1$coeff[2], col=4)
+abline(a=LinearModel.1$coeff[1]+LinearModel.1$coeff[3], b=LinearModel.1$coeff[2], col=2)
+```
+
+## Model with full interaction
+
+The most complex linear model that we can generate with a predictor variable and a factor is the one that includes the full interaction.
+
+Note that we introduce the indicator with a * . Thus the indicator affects $\beta_0$, and $\beta_1$ and therefore we will have a $\beta_0$ for each of the levels of the factor (in this case, one for short durations and another for long durations) and similarly for $\beta_1$. This corresponds to generating two regression lines with different ordinates at the origin and different slopes.
+
+```{r, LM2}
+LinearModel.2 <- lm(loginterval ~ logdurada * indicadordurada, data=dadesgeyser)
+```
+
+```{r, fig.cap="Gràfics de diagnòstic del model amb interacció logdurada * indicadordurada"}
+par(mfrow=c(2,2))
+plot(LinearModel.2)
+par(mfrow=c(1,1))
+```
+
+```{r, sumLM2}
+summary(LinearModel.2)
+```
+
+::: {.infobox .caution data-latex="{caution}"}
+Watch out! The output of the estimated parameters follows the above logic. The estimated model is:
+\[
+loginterval =  \beta_{0_{ref}}+ \Delta \beta_{0_{altra(}}+ (\beta_{1_{ref}}+ \Delta \beta_{1_{altra}})* logdurada
+\]
+
+At the output, the intercept value corresponds to $\beta_{0_{ref}}$, the ordinate at the origin of the reference category, which will be the first in alphabetical order or the lowest number if we have coded with numbers. (For the duration indicator, 0, short duration, will be the reference value)
+
+El valor $\beta_{0_{altra}}$ en realitat és el canvi $\Delta \beta_{0_{altra}}$, increment o decrement de $\beta_{0_{ref}}$ pel fet d'estar a l'altre nivell del factor. És a dir,
+$\beta_{0_{altra}}=\beta_{0_{ref}}+\Delta \beta_{0_{altra}}$. 
+Per $\beta_{1}$ tenim una situació similar.
+:::
+
+### 🖊Exercici:
+```{r  summaryM2-quiz, echo=FALSE}
+quiz(
+question("In the Model 2 summary",
+    answer("The $p$-value of the F-contrast is 2.2e-16", correct = TRUE),
+    answer("The coefficient of determination of Model2 is slightly higher than that of Model1", correct = TRUE),
+    answer("We cannot reject that the increments of $beta_0$ and $beta_1$ for long durations are zero", correct = TRUE),
+    answer("All of the above options are correct.", correct = TRUE)
+    )
+   )    
+```
+
+
+We represent the `scatterplot` with the regression lines fitted by the three models:
+```{r, fig.cap="Scatterplot with regressions for groups defined by indicatorduration"}
+scatterplot(loginterval~logdurada | indicadordurada, regLine=FALSE, smooth=FALSE, boxplots=FALSE, by.groups=TRUE, data=dadesgeyser)
+abline(LinearModel.0, col=1)
+abline(a=LinearModel.1$coeff[1], b=LinearModel.1$coeff[2], col=4)
+abline(a=LinearModel.1$coeff[1]+LinearModel.1$coeff[3], b=LinearModel.1$coeff[2], col=2)
+abline(a=LinearModel.2$coeff[1], b=LinearModel.2$coeff[2], col=5)
+abline(a=LinearModel.2$coeff[1]+LinearModel.2$coeff[3], b=LinearModel.2$coeff[2]+LinearModel.2$coeff[4], col=3)
+```
+
+::: {.infobox .circle data-latex="{circle}"}
+We could improve the representation by changing the `lty` (line type), `lwd` (line thickness) parameters of the regression line representations. We already saw some of these arguments in previous labs.
+:::
+
+If we don't need to compare models visually, we can use the `scatterplot` conditioned by the factor:
+
+```{r, fig.cap="Relationship between logduration and loginterval with interaction by groups"}
+scatterplot(loginterval~logdurada | indicadordurada, smooth=FALSE, boxplots=FALSE, by.groups=TRUE, data=dadesgeyser)
+```
+
+## Prediction
+
+Often we will want to use the fitted model to make predictions. We will need to generate a data frame with the same structure as the original df, containing the observations for which we want to obtain predictions. We will obtain the prediction with the `predict` instruction
+
+```{r}
+valref<- c(2, 3) #we have two reference values
+logdurades<-log(valref)
+indicadordurades<-c('Long duration', 'Short duration')
+
+valpred <- data.frame(logdurada=logdurades, indicadordurada=indicadordurades)
+logintervalPreditLM <- predict(LinearModel.2, valpred)
+IntervalPreditLM<-exp(logintervalPreditLM )
+prediccio <- data.frame(valref,valpred, logintervalPreditLM, IntervalPreditLM )
+prediccio
+```
+
+# Conclusion {-}
+
+With this section we have finished the descriptive analysis and the introduction to the simple linear regression model completed with the Old Faithful data
+
+# References
+
+<div id="refs"></div>
+
+#  About / Canvis {-}
+
+Created by M. Ortego for the Probability and Statistics Courses of the ETSECCPB - UPC.
+
+Versió 1.0
+
+#  Crèdits {-}
+
+<a href="https://www.flaticon.com/free-icons/travel" title="travel icons">Travel icons created by IconBaandar - Flaticon</a>
+
+<a href="https://www.flaticon.com/free-icons/alert" title="alert icons">Alert icons created by Creatype - Flaticon</a>
+
+<a href="https://www.flaticon.com/free-icons/find" title="find icons">Find icons created by hqrloveq - Flaticon</a>
+
+<a href="https://www.flaticon.com/free-icons/eye" title="eye icons">Eye icons created by Freepik - Flaticon</a>

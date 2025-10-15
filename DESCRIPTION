@@ -1,0 +1,14 @@
+Package: Lab3StatCaminsCat
+Title: Lab3 Tutorial StatCamins. English version.
+Version: 0.1.0
+Authors@R: 
+    person("Maribel", "Ortego", 
+    email= "ma.isabel.ortego@upc.edu", 
+    role = c("aut", "cre"))
+Description: Lab3 Tutorial. StatCamins. Simple Linear Regression
+License:  AGPL-3.0 license 
+Encoding: UTF-8
+Roxygen: list(markdown = TRUE)
+RoxygenNote: 7.3.2
+Suggests: 
+    learnr
